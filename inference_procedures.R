@@ -4,6 +4,9 @@
 # * Libraries ----
 library(infer)
 library(tidyverse)
+library(stats)
+library(forcats)
+library(glue)
 
 # * Load in the dataset ----
 data(gss)
@@ -11,6 +14,23 @@ data(gss)
 # take a look at its structure
 dplyr::glimpse(gss)
 
+# Contingency table to get a sense of the distribution
+gss %>%
+  # Count the rows by college status and income
+  count(college, income)
+
+# Find proportion of each class who were finished college
+gss %>%
+  # Group by sex
+  group_by(class, sex) %>%
+  # Calculate college proportion summary stat
+  summarize(college_prop = mean(college == "degree"))
+
+gss %>% filter(college == "degree")
+
+gss %>%
+  mutate(college_lgl = (college == "degree")) %>% pull(college_lgl) %>%
+  mean()
 
 # * Description of infer package ----
 # ?infer::calculate()
@@ -162,3 +182,171 @@ gss %>%
   hypothesize(null = "independence") %>%
   generate(reps = 1000, type = "permute") %>%
   calculate("diff in means", order = c("degree", "no degree"))
+
+gss %>% class()
+
+# find the point estimate
+point_estimate <- gss %>%
+  specify(response = hours) %>%
+  calculate(stat = "mean")
+
+# Generate a null distribution ----
+null_dist <- gss %>%
+  specify(response = hours) %>%
+  hypothesize(null = "point", mu = 40) %>%
+  generate(reps = 1000, type = "bootstrap") %>%
+  calculate(stat = "mean")
+
+null_dist %>% visualise() +
+  shade_p_value(obs_stat = point_estimate, direction = "two-sided")
+
+# Get a two-tailed p-value ----
+# If less than the significance level alpha
+# you decided on before running this analysis it would be statistically
+# significant.  In the gss dataset the at alpha = 0.05 the p-value of
+# 0.042 indicates the difference is statistically significant.
+
+p_value <- null_dist %>%
+  get_p_value(obs_stat = point_estimate, direction = "two-sided")
+
+p_value
+
+# Confidence interval ----
+# start with the null distribution
+null_dist %>%
+  # calculate the confidence interval around the point estimate
+  get_confidence_interval(point_estimate = point_estimate,
+                          # at the 95% confidence level
+                          level = .95,
+                          # using the standard error
+                          type = "se")
+
+# The confidence interval is 40.1 to 42.7.  40hrs is not contained in
+# this interval.
+#
+null_f_distn <- gss %>%
+  specify(age ~ partyid) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "F")
+
+null_f_distn_theoretical <- gss %>%
+  specify(age ~ partyid) %>%
+  hypothesize(null = "independence") %>%
+  calculate(stat = "F")
+
+F_hat <- gss %>%
+  specify(age ~ partyid) %>%
+  calculate(stat = "F")
+
+visualize(null_f_distn_theoretical, method = "theoretical") +
+  shade_p_value(obs_stat = F_hat, direction = "greater")
+
+visualize(null_f_distn, method = "both") +
+  shade_p_value(obs_stat = F_hat, direction = "greater")
+
+help(package = "infer")
+# Does completing college predict income?  ----
+# Question:  Does getting a college degree predict a higher income?
+
+gss %>% glimpse()
+
+gss %>%
+  select_if(is.numeric) %>%
+  map(~ unique(.) %>% length())
+
+gss %>%
+  select(income) %>% unique()
+
+gss_prep_tbl <-  gss %>%
+  mutate(above_25k =
+           as_factor(ifelse(income == "$25000 or more", "Yes", "No")))
+
+point_estimate <- gss_prep_tbl %>%
+  specify(response = above_25k, explanatory = college, success = "Yes") %>%
+  hypothesise(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in props", order = c("degree", "no degree"))
+
+null_dist <- gss_prep_tbl %>%
+  specify(above_25k ~ college, success = "Yes") %>%
+  hypothesise(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in props", order = c("no degree", "degree"))
+
+null_dist %>%
+  ggplot(aes(x = stat)) +
+  geom_density()
+
+null_dist %>% visualise()
+
+gss_prep_tbl %>%
+  count(above_25k, class, college)
+
+# Find proportion of respondents with or without college degrees who
+# earn over $25k
+gss_prep_tbl %>%
+  # Group by college
+  group_by(college) %>%
+  # Calculate proportion above $25k summary stat
+  summarize(prop_above25k = mean(above_25k == "Yes"))
+
+# * Calculate the observed difference in promotion rate ----
+diff_orig <- gss_prep_tbl %>%
+  # Group by college
+  group_by(college) %>%
+  # Summarize to calculate fraction with income above $25k
+  summarise(prop_above25k = mean(above_25k == "Yes")) %>%
+  # Summarize to calculate difference
+  summarise(stat = diff(prop_above25k)) %>%
+  pull()
+
+diff_orig_2 <- gss_prep_tbl %>%
+  # Group by class and college
+  group_by(college, class) %>%
+  # Summarize to calculate fraction with income above $25k
+  summarise(prop_above25k = mean(above_25k == "Yes")) %>%
+  ungroup() %>%
+  mutate(college_class = as_factor(glue("{college} {class}"))) %>%
+  select(-college, -class) %>%
+  relocate(college_class) %>%
+  # Summarize to calculate difference
+  summarise(stat = diff(prop_above25k)) %>%
+  pull()
+
+?diff
+
+# * Step through the permutation ----
+# Replicate the entire data frame, permuting the promote variable
+gss_perm <- gss_prep_tbl %>%
+  specify(above_25k ~ college, success = "Yes") %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute")
+
+gss_perm %>%
+  # Group by replicate
+  group_by(replicate) %>%
+  # Count per group
+  count(above_25k, college)
+
+gss_perm <- gss_perm %>%
+  # Calculate difference in proportion, degree then no degree
+  calculate(stat = "diff in props", order = c("degree", "no degree"))
+
+# This seems like an open and shut case.  A college degree appears to
+# predict a higher proportion earn above $25k
+gss_perm %>%
+  summarise(proportion = mean(diff_orig >= stat))
+
+gss_perm %>%
+# Plot permuted differences, diff_perm
+ggplot(aes(x = stat)) +
+  # Add a density layer
+  geom_density() +
+  # Add a vline layer with intercept diff_orig
+  geom_vline(aes(xintercept = diff_orig), color = "red")
+
+# Compare permuted differences to observed difference
+gss_perm %>%
+  summarize(n_perm_le_obs = sum(stat <= diff_orig))
+
