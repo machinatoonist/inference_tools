@@ -305,7 +305,8 @@ diff_orig_2 <- gss_prep_tbl %>%
   # Group by class and college
   group_by(college, class) %>%
   # Summarize to calculate fraction with income above $25k
-  summarise(prop_above25k = mean(above_25k == "Yes")) %>%
+  summarise(prop_above25k = mean(above_25k == "Yes"),
+            n_obs = n()) %>%
   ungroup() %>%
   mutate(college_class = as_factor(glue("{college} {class}"))) %>%
   select(-college, -class) %>%
@@ -335,8 +336,10 @@ gss_perm <- gss_perm %>%
 
 # This seems like an open and shut case.  A college degree appears to
 # predict a higher proportion earn above $25k
+# Compare permuted differences to observed difference
 gss_perm %>%
-  summarise(proportion = mean(diff_orig >= stat))
+  summarise(proportion = mean(diff_orig >= stat),
+            n_perm_le_obs = sum(stat <= diff_orig))
 
 gss_perm %>%
 # Plot permuted differences, diff_perm
@@ -346,7 +349,14 @@ ggplot(aes(x = stat)) +
   # Add a vline layer with intercept diff_orig
   geom_vline(aes(xintercept = diff_orig), color = "red")
 
-# Compare permuted differences to observed difference
-gss_perm %>%
-  summarize(n_perm_le_obs = sum(stat <= diff_orig))
 
+gss_prep_tbl = gss %>% select(hours) %>%
+  summarise(
+    mu = mean(hours),
+    median = median(hours),
+    sigma = sd(hours),
+    q_05 = quantile(hours, p = 0.05),
+    q_95 = quantile(hours, p = 0.95),
+    min = min(hours),
+    max = max(hours)
+  )
