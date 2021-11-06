@@ -784,3 +784,101 @@ p_hat_0.8
 
 # Calculate the bootstrap t-confidence interval (new 0.8 param)
 calc_t_conf_int(one_poll_boot_0.8, p_hat_0.8)
+
+
+# Percentile effects on CI endpoints ----
+
+# Calculate a 95% bootstrap percentile interval
+one_poll_boot %>%
+  get_confidence_interval(level = 0.95)
+
+# Calculate a 99% bootstrap percentile interval
+one_poll_boot %>%
+  get_confidence_interval(level = 0.99)
+
+# Calculate a 90% bootstrap percentile interval
+one_poll_boot %>%
+  get_confidence_interval(level = 0.90)
+
+# Plot ci_endpoints vs. ci_percent to compare the intervals
+ggplot(conf_int_data, aes(y = ci_endpoints, x = ci_percent)) +
+  # Add a line layer
+  geom_line()
+
+# CATEGORICAL INFERENCE WITH GSS DATA ----
+
+gss2016 <- gss %>%
+  filter(year == 2016)
+
+gss %>% glimpse()
+
+gss %>%
+  group_by(year, sex) %>%
+  summarise(prop_with_degree = mean(college == "degree")) %>%
+  drop_na() %>%
+  ggplot(aes(x = year, y = prop_with_degree, color = sex)) +
+  geom_line()
+
+
+gss2016 <- gss %>%
+  filter(year == 2016)
+
+ggplot(gss2016, aes(x = college)) +
+  geom_bar()
+
+# Compute proportion with college degree
+p_hat_2016 <- gss2016 %>%
+  summarize(prop_high = mean(college == "degree")) %>%
+  pull()
+
+p_hat <- gss %>%
+  group_by(year) %>%
+  summarize(prop_high = mean(college == "degree")) %>%
+  pull()
+
+boot1 <- gss2016 %>%
+  specify(response = consci, success = "High") %>%
+  generate(reps = 1, type = "bootstrap")
+
+
+
+boot1 <- gss2016 %>%
+  specify(response = college, success = "degree") %>%
+  generate(reps = 1, type = "bootstrap")
+
+# Using boot1, plot consci
+boot1 %>%
+  ggplot(aes(college)) +
+  # Add bar layer
+  geom_bar()
+
+# Compute proportion with degree
+boot1 %>%
+  summarize(prop_degree = mean(college == "degree")) %>%
+  pull()
+
+# Create bootstrap distribution for proportion with degree
+boot_dist <- gss2016 %>%
+  # Specify the response and success
+  specify(response = college, success = "degree") %>%
+  # Generate 500 bootstrap reps
+  generate(reps = 500, type = "bootstrap") %>%
+  # Calculate proportions
+  calculate(stat = "prop")
+
+# See the result
+boot_dist
+
+# Plot bootstrap distribution of stat
+boot_dist %>% ggplot(aes(stat)) +
+  # Add density layer
+  geom_density()
+
+# Compute the standard error by summarizing the distribution
+SE_2016 <- boot_dist %>%
+  summarize(se = sd(stat)) %>%
+  pull()
+
+# Create CI
+c(p_hat_2016 - 2 * SE_2016, p_hat_2016 + 2 * SE_2016)
+
